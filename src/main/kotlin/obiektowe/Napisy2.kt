@@ -21,5 +21,8 @@ object Napisy2 {
             buffer.append(x).append("; ")
         }
         println(buffer)
+
+        val kotlinWay = tab.joinToString("; ", postfix = ";")
+        println(kotlinWay)
     }
 }
