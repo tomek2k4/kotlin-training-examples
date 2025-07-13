@@ -1,5 +1,6 @@
 package org.example
 
+import org.example.dsl.MainDslLazy
 import org.example.interfejsykolekcje.TestSklep
 import org.example.kolekcje.KolekcjeA
 import org.example.kolekcje.Mapy
@@ -12,5 +13,5 @@ import org.example.wyjatki.Wyjatki
 fun main() {
     println("Hello World!")
 
-    MainThread.main()
+    MainDslLazy.main()
 }
