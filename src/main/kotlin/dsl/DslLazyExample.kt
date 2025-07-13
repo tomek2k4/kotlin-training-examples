@@ -3,19 +3,24 @@ package org.example.dsl
 data class SomeConfiguration(val name: String)
 data class SomeOtherConfiguration(val age: Int)
 
-data class LazyConfigurationMap(val underLaying: Map<String, Lazy<Any>>)
+data class LazyConfigurationMap(val underLaying: MutableMap<Class<out Any>, Lazy<Any>>)
+
+inline fun <reified Configuration : Any> LazyConfigurationMap.get(): Lazy<Configuration> =
+    this.underLaying[Configuration::class.java] as? Lazy<Configuration>
+        ?: throw IllegalArgumentException("No configuration available for key")
+
+inline fun <reified Configuration : Any> ConfigurationsMapBuilder.addLazy(addLazyMethod: ConfigurationsMapBuilder.() -> Lazy<Configuration>) {
+    this.configurations.underLaying[Configuration::class.java] = addLazyMethod()
+}
 
 class ConfigurationsMapBuilder {
-    private val configurations = mutableMapOf<String,Lazy<Any>>()
-
-    infix fun String.to(target: Lazy<Any>){
-        configurations[this] = target
-    }
+    val configurations = LazyConfigurationMap(mutableMapOf())
 
     fun build(): LazyConfigurationMap {
-        return LazyConfigurationMap(configurations)
+        return configurations
     }
 }
+
 
 fun buildConfigurationsMap(init: ConfigurationsMapBuilder.() -> Unit): LazyConfigurationMap {
     val builder = ConfigurationsMapBuilder()
@@ -24,13 +29,13 @@ fun buildConfigurationsMap(init: ConfigurationsMapBuilder.() -> Unit): LazyConfi
 }
 
 
-inline fun <reified Configuration : Any> LazyConfigurationMap.get(key: String) =
-    this.underLaying[key] as? Lazy<Configuration> ?: throw IllegalArgumentException("No configuration available for key: $key")
-
 class ComponentBuilder(private val lazyConfigurationMap: LazyConfigurationMap) {
-    val someConfiguration: SomeConfiguration by lazyConfigurationMap.get("name")
+    val someConfiguration: SomeConfiguration by lazyConfigurationMap.get()
+    val someOtherConfiguration: SomeOtherConfiguration by lazyConfigurationMap.get()
+
     fun build() {
         println(someConfiguration.name)
+        println(someOtherConfiguration.age)
     }
 }
 
@@ -38,10 +43,13 @@ object MainDslLazy {
 
     fun main() {
         val configurationsMap = buildConfigurationsMap {
-            "name" to lazy<Any> { SomeConfiguration("Tomek") }
-            "age" to lazy<Any> { SomeOtherConfiguration(40) }
+            addLazy { lazy { SomeConfiguration("Tomek") } }
+            addLazy { lazy { SomeOtherConfiguration(40) } }
         }
 
+//        val configurationsMap = LazyConfigurationMap(mutableMapOf())
+//        configurationsMap.put(lazy { SomeConfiguration("Tomek") })
+//        configurationsMap.put(lazy { SomeOtherConfiguration(40) })
         println(configurationsMap)
         val componentBuilder = ComponentBuilder(configurationsMap)
         println("Tworzenie componentu")
