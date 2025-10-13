@@ -1,9 +1,23 @@
 package org.example.android.architecture.mvi
 
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
-import java.util.*
-import kotlin.collections.LinkedHashMap
+import java.util.Collections
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.toCollection
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 data class UserDto(val id: Int, val userName: String, val changedLineCount: Int)
 
@@ -21,6 +35,7 @@ sealed class Content<T> {
 }
 
 interface Api {
+
     suspend fun getUsers(): UsersResponse
 
     suspend fun removeUser(id: Int)
@@ -45,7 +60,7 @@ suspend fun <T : Any> firstCacheLoad(
 ): Flow<Content<T>> =
     withContext(dispatcher) {
         val cached = memoryCache.observe<T>(cacheKey).firstOrNull()
-        val initial: Content<T> = Content.Loading(data = cached)
+        val initial: Content<T> = Content.Loading(cached)
         merge(
             flow {
                 emit(initial)
@@ -56,7 +71,7 @@ suspend fun <T : Any> firstCacheLoad(
                     memoryCache.put(cacheKey, callResult.data)
                 }
             },
-            memoryCache.observe<T>(cacheKey).filterNotNull().map { Content.Data(data = it) as Content<T> }
+            memoryCache.observe<T>(cacheKey).filterNotNull().map { Content.Data(it) as Content<T> }
         )
     }.flowOn(dispatcher)
 
@@ -66,12 +81,11 @@ sealed class UserState {
     data class Error(val message: String) : UserState()
 }
 
+
 class UsersViewModel(
     private val dispatcher: CoroutineDispatcher
 ) {
-
 }
-
 
 class DiComponent {
 
@@ -86,7 +100,7 @@ class DiComponent {
     }
 
     fun provideViewModel(): UsersViewModel = UsersViewModel(
-        dispatcher = dispatcher
+        dispatcher
     )
 }
 
@@ -94,14 +108,14 @@ class Fragment {
 
     val diComponent = DiComponent()
 
-    val viewLifecycleScope = CoroutineScope(diComponent.dispatcher)
+    val viewLifeCycleScope = CoroutineScope(diComponent.dispatcher)
 
     val memoryCache: Cache = diComponent.provideCache()
 
     val view = ListView()
 
     fun onCreate(): Job {
-        val job = viewLifecycleScope.launch {
+        val job = viewLifeCycleScope.launch {
             renderLoading(UserState.Loading())
             try {
                 val users = diComponent.provideApi().getUsers()
@@ -117,7 +131,7 @@ class Fragment {
 
     private fun renderLoading(state: UserState.Loading) {
         println()
-        println("NEW_STATE----------------------")
+        println("NEW_STATE-------------------")
         println("LOADING IN PROGRESS")
         val cachedUsers = state.users
         if (cachedUsers != null) {
@@ -131,7 +145,7 @@ class Fragment {
 
     private fun renderError(state: UserState.Error) {
         println()
-        println("NEW_STATE----------------------")
+        println("NEW_STATE-------------------")
         println()
         view.render(RowView(state.message))
         println()
@@ -140,7 +154,7 @@ class Fragment {
 
     private fun renderData(state: UserState.Data) {
         println()
-        println("NEW_STATE----------------------")
+        println("NEW_STATE-------------------")
         println()
         val views = state.users.map { RowView(it.userName) }
         view.render(views)
@@ -169,18 +183,19 @@ fun flow_example_test() = runBlocking {
         .isEqualTo(1, 2, 3)
 }
 
+
 /*
 *
-* DON'T CHANGE CLASS BELOW THIS LINE --------------------------------------------------------------
+* DON'T CHANGE CLASS BELOW THIS LINE  ---------------------------------------
 *
 * */
 
 class RemoteApi : Api {
 
     private val users = mutableListOf(
-        UserDto(id = 1, userName = "John Doe", changedLineCount = 1000),
-        UserDto(id = 2, userName = "Marc Test", changedLineCount = 200),
-        UserDto(id = 3, userName = "Anna Lawson", changedLineCount = 450)
+        UserDto(1, "John Doe", 1000),
+        UserDto(2, "Marc Test", 200),
+        UserDto(3, "Anna Lawson", 450)
     )
 
     override suspend fun getUsers(): UsersResponse = UsersResponse(users)
@@ -192,7 +207,8 @@ class RemoteApi : Api {
     }
 }
 
-class CustomMutableStateFlow<T>(val delegate: MutableStateFlow<T>) : MutableStateFlow<T> by delegate {
+class CustomMutableStateFlow<T>(val delegate: kotlinx.coroutines.flow.MutableStateFlow<T>) :
+    kotlinx.coroutines.flow.MutableStateFlow<T> by delegate {
     override suspend fun emit(value: T) {
         println("delay")
         delay(10)
@@ -200,22 +216,23 @@ class CustomMutableStateFlow<T>(val delegate: MutableStateFlow<T>) : MutableStat
     }
 }
 
-fun <T> MutableStateFlow(initial: T): MutableStateFlow<Any?> =
-    CustomMutableStateFlow(delegate = MutableStateFlow<T>(initial))
+fun <T> MutableStateFlow(initial: T): kotlinx.coroutines.flow.MutableStateFlow<T> =
+    CustomMutableStateFlow(kotlinx.coroutines.flow.MutableStateFlow<T>(initial))
 
 class MemoryCache(cacheSize: Int = MAX_CACHE_SIZE) : Cache {
 
-    private val cache: MutableMap<String, MutableStateFlow<Any?>> =
-        object : LinkedHashMap<String, MutableStateFlow<Any?>>() {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MutableStateFlow<Any?>>?): Boolean =
-                size > cacheSize
+    private val cache: MutableMap<String, kotlinx.coroutines.flow.MutableStateFlow<Any?>> =
+        object : LinkedHashMap<String, kotlinx.coroutines.flow.MutableStateFlow<Any?>>() {
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, kotlinx.coroutines.flow.MutableStateFlow<Any?>>?
+            ): Boolean = size > cacheSize
         }.let { Collections.synchronizedMap(it) }
 
     override suspend fun put(key: String, value: Any?) {
-        if (cache.contains(key)) {
+        if (cache.containsKey(key)) {
             cache[key]?.emit(value)
         } else {
-            cache[key] = MutableStateFlow(value)
+            cache[key] = kotlinx.coroutines.flow.MutableStateFlow(value)
         }
     }
 
@@ -249,7 +266,6 @@ interface View {
 }
 
 class ListView {
-
     fun render(vararg views: View) {
         renderInternal(views)
     }
@@ -302,15 +318,14 @@ class TestCollector<T>(
     suspend fun isEqualTo(expected: List<T>) {
         delay(100)
         cancelIfActive()
-        assetEquals(testName, expected, values)
+        assertEquals(testName, expected, values)
     }
 
     suspend fun isEqualTo(vararg expected: T) {
         delay(100)
         cancelIfActive()
-        assetEquals(testName, expected, values)
+        assertEquals(testName, expected.toList(), values)
     }
-
 
     private fun cancelIfActive() {
         if (job.isActive) {
@@ -319,12 +334,10 @@ class TestCollector<T>(
     }
 }
 
-fun assetEquals(testName: String, expected: Any, values: Any) {
+fun assertEquals(testName: String, expected: Any, values: Any) {
     if (values != expected) {
         println("$testName FAILED:\nexpected: $expected\nActual: $values")
     } else {
         println("$testName PASSED")
     }
 }
-
-
