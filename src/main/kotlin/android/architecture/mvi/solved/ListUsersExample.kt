@@ -93,29 +93,31 @@ class UserRepository(
 
 class UsersViewModel(
     private val dispatcher: CoroutineDispatcher,
-    private val repository: UserRepository,
+    private val repository: UserRepository
 ) {
     private val viewLifecycle = CoroutineScope(dispatcher)
 
-    private val _userState: MutableStateFlow<UserState> = MutableStateFlow(UserState.Loading())
-    val userState = _userState.asStateFlow()
+    private val _userState: Flow<UserState> = repository.fetchUsers().mapToState()
+    val userState = _userState.stateIn(
+        scope = viewLifecycle,
+        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5000),
+        initialValue = UserState.Loading()
+    )
 
-    fun loadUsers() {
-        viewLifecycle.launch {
-            repository.fetchUsers().collect { contentUserDto ->
-                _userState.value = when (contentUserDto) {
-                    is Content.Loading<List<UserDto>> -> {
-                        UserState.Loading(contentUserDto.data?.map { it.toDomain() })
-                    }
+    private fun Flow<Content<List<UserDto>>>.mapToState(): Flow<UserState> {
+        return this.map { content ->
+            when (content) {
+                is Content.Loading<List<UserDto>> -> {
+                    UserState.Loading(content.data?.map { it.toDomain() })
+                }
 
-                    is Content.Data<List<UserDto>> -> {
-                        val users = contentUserDto.data.map { it.toDomain() }
-                        UserState.Data(users)
-                    }
+                is Content.Data<List<UserDto>> -> {
+                    val users = content.data.map { it.toDomain() }
+                    UserState.Data(users)
+                }
 
-                    is Content.Error<*> -> {
-                        UserState.Error(contentUserDto.exception.message ?: "Unknown error")
-                    }
+                is Content.Error<*> -> {
+                    UserState.Error(content.exception.message ?: "Unknown error")
                 }
             }
         }
@@ -164,14 +166,15 @@ class Fragment {
                     is UserState.Loading -> {
                         renderLoading(state)
                     }
+
                     is UserState.Data -> {
                         renderData(state)
                     }
+
                     is UserState.Error -> renderError(state)
                 }
             }
         }
-        viewModel.loadUsers()
 
         return job
     }
