@@ -100,7 +100,7 @@ class UsersViewModel(
     private val _userState: MutableStateFlow<UserState> = MutableStateFlow(UserState.Loading())
     val userState = _userState.asStateFlow()
 
-    init {
+    fun loadUsers() {
         viewLifecycle.launch {
             repository.fetchUsers().collect { contentUserDto ->
                 _userState.value = when (contentUserDto) {
@@ -161,12 +161,18 @@ class Fragment {
         val job = viewLifeCycleScope.launch {
             viewModel.userState.collect { state ->
                 when (state) {
-                    is UserState.Loading -> renderLoading(state)
-                    is UserState.Data -> renderData(state)
+                    is UserState.Loading -> {
+                        renderLoading(state)
+                    }
+                    is UserState.Data -> {
+                        renderData(state)
+                    }
                     is UserState.Error -> renderError(state)
                 }
             }
         }
+        viewModel.loadUsers()
+
         return job
     }
 
