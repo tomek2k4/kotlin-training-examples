@@ -78,7 +78,16 @@ class UserRepository(
     private val memoryCache: Cache
 ) {
     fun fetchUsers(): Flow<Content<List<UserDto>>> {
-        TODO()
+        return flow {
+            try {
+                api.getUsers().also { users ->
+                    memoryCache.put("USERS", users.users)
+                    emit(Content.Data(users.users))
+                }
+            } catch (t: Throwable) {
+                emit(Content.Error(t))
+            }
+        }
     }
 }
 
@@ -86,7 +95,7 @@ class UsersViewModel(
     private val dispatcher: CoroutineDispatcher,
     private val repository: UserRepository,
 ) {
-    val viewLifecycle = CoroutineScope(dispatcher)
+    private val viewLifecycle = CoroutineScope(dispatcher)
 
     private val _userState: MutableStateFlow<UserState> = MutableStateFlow(UserState.Loading())
     val userState = _userState.asStateFlow()
@@ -150,16 +159,14 @@ class Fragment {
 
     fun onCreate(): Job {
         val job = viewLifeCycleScope.launch {
-            renderLoading(UserState.Loading())
-            try {
-                val users = diComponent.provideApi().getUsers()
-                memoryCache.put("USERS", users.users)
-                renderData(UserState.Data(users.users))
-            } catch (t: Throwable) {
-                renderError(UserState.Error(t.message.orEmpty()))
+            viewModel.userState.collect { state ->
+                when (state) {
+                    is UserState.Loading -> renderLoading(state)
+                    is UserState.Data -> renderData(state)
+                    is UserState.Error -> renderError(state)
+                }
             }
         }
-
         return job
     }
 
